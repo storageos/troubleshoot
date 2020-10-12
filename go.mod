@@ -1,4 +1,4 @@
-module github.com/replicatedhq/troubleshoot
+module github.com/storageos/troubleshoot
 
 go 1.12
 
