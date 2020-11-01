@@ -5,10 +5,10 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"time"
-	"fmt"
 
 	"github.com/pkg/errors"
 	troubleshootv1beta2 "github.com/replicatedhq/troubleshoot/pkg/apis/troubleshoot/v1beta2"
@@ -23,7 +23,7 @@ func Run(c *Collector, runCollector *troubleshootv1beta2.Run) (map[string][]byte
 
 	client, err := kubernetes.NewForConfig(c.ClientConfig)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to create client from config")
+		return nil, fmt.Errorf("failed to create client from config, got err: %w", err)
 	}
 
 	// List of Pods that will be created
@@ -33,7 +33,7 @@ func Run(c *Collector, runCollector *troubleshootv1beta2.Run) (map[string][]byte
 		// Get all the nodes where a Pod should be running
 		nodes, err := listNodesInSelectors(ctx, client, runCollector.NodeSelector)
 		if err != nil {
-			return nil, errors.Wrap(err, "failed to get the list of nodes matching a nodeSelector")
+			return nil, fmt.Errorf("failed to get the list of nodes matching a nodeSelector, got err: %w", err)
 		}
 
 		for _, node := range nodes {
@@ -47,7 +47,7 @@ func Run(c *Collector, runCollector *troubleshootv1beta2.Run) (map[string][]byte
 			podname := runCollector.CollectorName + "-" + nodeHostName
 			pod, err := runPod(ctx, client, runCollector, c.Namespace, podname, nodeSelector)
 			if err != nil {
-				return nil, errors.Wrap(err, "failed to run Pod")
+				return nil, fmt.Errorf("failed to run Pod, got err: %w", err)
 			}
 
 			pods = append(pods, *pod)
@@ -55,7 +55,7 @@ func Run(c *Collector, runCollector *troubleshootv1beta2.Run) (map[string][]byte
 	} else {
 		pod, err := runPod(ctx, client, runCollector, c.Namespace, "pod", nil)
 		if err != nil {
-			return nil, errors.Wrap(err, "failed to run pod")
+			return nil, fmt.Errorf("failed to run pod, got err: %w", err)
 		}
 
 		pods = append(pods, *pod)
@@ -86,7 +86,7 @@ func Run(c *Collector, runCollector *troubleshootv1beta2.Run) (map[string][]byte
 
 	timeout, err := time.ParseDuration(runCollector.Timeout)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to parse timeout")
+		return nil, fmt.Errorf("failed to parse timeout, %w", err)
 	}
 
 	errCh := make(chan error, 1)
@@ -113,18 +113,18 @@ func Run(c *Collector, runCollector *troubleshootv1beta2.Run) (map[string][]byte
 func runWithoutTimeout(ctx context.Context, c *Collector, pods []corev1.Pod, runCollector *troubleshootv1beta2.Run) (map[string][]byte, error) {
 	client, err := kubernetes.NewForConfig(c.ClientConfig)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed create client from config")
+		return nil, fmt.Errorf("failed create client from config, got: %w", err)
 	}
 
 	// Data structure to gather the output of all Pods executed
 	runOutput := map[string][]byte{}
 
-	podsloop:
+podsloop:
 	for _, pod := range pods {
 		for {
 			status, err := client.CoreV1().Pods(pod.Namespace).Get(ctx, pod.Name, metav1.GetOptions{})
 			if err != nil {
-				return nil, errors.Wrap(err, "failed to get pod")
+				return nil, fmt.Errorf("failed to get pod, got: %w", err)
 			}
 			if status.Status.Phase == corev1.PodRunning ||
 				status.Status.Phase == corev1.PodFailed ||
@@ -158,7 +158,7 @@ func runWithoutTimeout(ctx context.Context, c *Collector, pods []corev1.Pod, run
 		}
 		podLogs, err := getPodLogs(ctx, client, pod, runCollector.Name, "", &limits, true)
 		if err != nil {
-			return nil, errors.Wrap(err, "failed to get pod logs")
+			return nil, fmt.Errorf("failed to get pod logs, got err: %w", err)
 		}
 
 		for _, v := range podLogs {
@@ -232,12 +232,12 @@ func runPod(ctx context.Context, client *kubernetes.Clientset, runCollector *tro
 	if runCollector.ImagePullSecret != nil {
 		err := createSecret(ctx, client, runCollector.ImagePullSecret, &pod)
 		if err != nil {
-			return nil, errors.Wrap(err, "failed to create secret")
+			return nil, fmt.Errorf("failed to create secret, got: %w", err)
 		}
 	}
 	created, err := client.CoreV1().Pods(namespace).Create(ctx, &pod, metav1.CreateOptions{})
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to create pod")
+		return nil, fmt.Errorf("failed to create pod, got: %w", err)
 	}
 
 	return created, nil
@@ -260,11 +260,11 @@ func createSecret(ctx context.Context, client *kubernetes.Clientset, imagePullSe
 			//K8s client accepts only Json formated files as data, provided data must be decoded and indented
 			parsedConfig, err := base64.StdEncoding.DecodeString(v)
 			if err != nil {
-				return errors.Wrap(err, "Unable to decode data.")
+				return fmt.Errorf("Unable to decode data, got: %w", err)
 			}
 			err = json.Indent(&out, parsedConfig, "", "\t")
 			if err != nil {
-				return errors.Wrap(err, "Unable to parse encoded data.")
+				return fmt.Errorf("Unable to parse encoded data, got : %w", err)
 			}
 			data[".dockerconfigjson"] = out.Bytes()
 
@@ -286,7 +286,7 @@ func createSecret(ctx context.Context, client *kubernetes.Clientset, imagePullSe
 		}
 		created, err := client.CoreV1().Secrets(pod.Namespace).Create(ctx, &secret, metav1.CreateOptions{})
 		if err != nil {
-			return errors.Wrap(err, "failed to create secret")
+			return fmt.Errorf("failed to create secret")
 		}
 		pod.Spec.ImagePullSecrets = append(pod.Spec.ImagePullSecrets, corev1.LocalObjectReference{Name: created.Name})
 		return nil
@@ -312,7 +312,7 @@ func listNodesInSelectors(ctx context.Context, client *kubernetes.Clientset, sel
 
 	nodes, err := client.CoreV1().Nodes().List(ctx, listOptions)
 	if err != nil {
-		return nil, errors.Wrap(err, "Can't get the list of nodes")
+		return nil, fmt.Errorf("Can't get the list of nodes, got: %w", err)
 	}
 
 	return nodes.Items, nil
