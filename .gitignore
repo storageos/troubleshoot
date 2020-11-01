@@ -30,8 +30,3 @@ vendor
 scope-go-*.log
 
 dist
-
-# Local compilation changes
-go.mod
-go.sum
-pkg/apis/troubleshoot/*
