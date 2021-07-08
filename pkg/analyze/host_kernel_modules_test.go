@@ -15,7 +15,7 @@ func TestAnalyzeKernelModules(t *testing.T) {
 		name         string
 		info         map[string]collect.KernelModuleInfo
 		hostAnalyzer *troubleshootv1beta2.KernelModulesAnalyze
-		result       *AnalyzeResult
+		result       []*AnalyzeResult
 		expectErr    bool
 	}{
 		{
@@ -31,10 +31,12 @@ func TestAnalyzeKernelModules(t *testing.T) {
 					},
 				},
 			},
-			result: &AnalyzeResult{
-				Title:   "Kernel Modules",
-				IsFail:  true,
-				Message: "the module 'abc' is not loaded",
+			result: []*AnalyzeResult{
+				{
+					Title:   "Kernel Modules",
+					IsFail:  true,
+					Message: "the module 'abc' is not loaded",
+				},
 			},
 		},
 		{
@@ -60,10 +62,70 @@ func TestAnalyzeKernelModules(t *testing.T) {
 					},
 				},
 			},
-			result: &AnalyzeResult{
-				Title:   "Kernel Modules",
-				IsPass:  true,
-				Message: "the module 'abc' is loaded",
+			result: []*AnalyzeResult{
+				{
+					Title:   "Kernel Modules",
+					IsPass:  true,
+					Message: "the module 'abc' is loaded",
+				},
+			},
+		},
+		{
+			name: "multiple results",
+			info: map[string]collect.KernelModuleInfo{
+				"xyz": {
+					Status: "loaded",
+				},
+			},
+			hostAnalyzer: &troubleshootv1beta2.KernelModulesAnalyze{
+				Outcomes: []*troubleshootv1beta2.Outcome{
+					{
+						Fail: &troubleshootv1beta2.SingleOutcome{
+							When:    "abc != loaded,unloaded",
+							Message: "the module 'abc' is not loaded or loadable",
+						},
+					},
+					{
+						Fail: &troubleshootv1beta2.SingleOutcome{
+							When:    "def != loaded,unloaded",
+							Message: "the module 'def' is not loaded or loadable",
+						},
+					},
+					{
+						Warn: &troubleshootv1beta2.SingleOutcome{
+							When:    "ghi != loaded",
+							Message: "the module 'def' is not loaded",
+						},
+					},
+					{
+						Pass: &troubleshootv1beta2.SingleOutcome{
+							When:    "xyz == loaded",
+							Message: "the module 'xyz' is loaded",
+						},
+					},
+				},
+			},
+			result: []*AnalyzeResult{
+				{
+					Title:   "Kernel Modules",
+					IsFail:  true,
+					Message: "the module 'abc' is not loaded or loadable",
+				},
+				{
+					Title:   "Kernel Modules",
+					IsFail:  true,
+					Message: "the module 'def' is not loaded or loadable",
+				},
+				{
+					Title:   "Kernel Modules",
+					IsWarn:  true,
+					Message: "the module 'def' is not loaded",
+				},
+				{
+					Title:   "Kernel Modules",
+					IsPass:  true,
+					Message: "the module 'xyz' is loaded",
+				},
 			},
 		},
 	}
